@@ -1,41 +1,31 @@
-import requests
 import pandas as pd
-import streamlit as st
+import requests
+from config import POLYGON_API_KEY
 
-# ✅ Fetch API key from Streamlit secrets
-POLYGON_API_KEY = st.secrets["POLYGON_API_KEY"]
-
-# ✅ Fetch Dark Pool Data from FINRA
-def fetch_dark_pool_data(ticker):
-    """Get Dark Pool Short Volume % (Institutional Buying)."""
-    url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/2024-01-01/2024-12-31?adjusted=true&sort=asc&apiKey={POLYGON_API_KEY}"
-    response = requests.get(url).json()
-
-    if "results" in response:
-        df = pd.DataFrame(response["results"])
-        df["Short Volume %"] = df["v"] / df["v"].rolling(10).mean()  
-        return df["Short Volume %"].iloc[-1]  # Latest Dark Pool Short Volume Percentage
-    return None
-
-# ✅ Fetch Unusual Options Activity
+# ✅ Fetch Options Activity Data
 def fetch_options_activity(ticker):
-    """Get Call/Put Ratio & Open Interest to detect institutional activity."""
+    """Fetch options flow data for institutional sentiment analysis."""
     url = f"https://api.polygon.io/v3/reference/options/contracts?underlying_ticker={ticker}&apiKey={POLYGON_API_KEY}"
+    
     response = requests.get(url).json()
-
     if "results" in response:
         df = pd.DataFrame(response["results"])
-        df["Call/Put Ratio"] = df["open_interest"] / df["volume"]  
-        return df["Call/Put Ratio"].mean()  # Average Call/Put Ratio
-    return None
+        
+        if "open_interest" in df.columns and "volume" in df.columns:
+            df["Call/Put Ratio"] = df["open_interest"] / df["volume"]
+            return df["Call/Put Ratio"].mean()
+        
+    return None  
 
-# ✅ Institutional Strength Score (Weighted)
+# ✅ Institutional Accumulation Score
 def institutional_score(ticker):
     """Calculate Institutional Strength Score (Dark Pools + Options Activity)."""
-    dark_pool_score = fetch_dark_pool_data(ticker) * 30  # Dark Pool Weight: 30%
-    options_score = fetch_options_activity(ticker) * 70  # Options Weight: 70%
+    
+    dark_pool_score = 50  # Placeholder for Dark Pool Data
+    options_score = fetch_options_activity(ticker)
 
-    if dark_pool_score is None or options_score is None:
-        return 0  # If data unavailable, assume no institutional activity
+    if options_score is None:
+        options_score = 0  
 
-    return round((dark_pool_score + options_score) / 100, 2)  # Final Institutional Score
+    return round((dark_pool_score * 0.3) + (options_score * 0.7), 2)
+
