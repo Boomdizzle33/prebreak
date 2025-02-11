@@ -1,6 +1,7 @@
 import pandas as pd
+import numpy as np
 import ta
-from data_fetch import fetch_stock_data  # ✅ Centralized Data Fetching
+from data_fetch import fetch_stock_data  
 
 # ✅ Identify a True VCP Pattern
 def is_valid_vcp(ticker):
@@ -38,4 +39,5 @@ def is_valid_vcp(ticker):
     )
 
     return round(vcp_score, 2) if vcp_score > 50 else 0  # **Only return if valid VCP**
+
 
