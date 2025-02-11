@@ -1,8 +1,9 @@
 import streamlit as st
 import pandas as pd
 import time
-from scanner import rank_best_trades
-from backtest import backtest_vcp
+from scanner import rank_best_trades  # ✅ Scanner function to find best setups
+from backtest import backtest_vcp  # ✅ Backtesting function
+from data_fetch import fetch_stock_data  # ✅ Directly fetch stock data (avoids scanner dependency)
 
 # ✅ Set Up Streamlit Page
 st.set_page_config(page_title="🚀 Minervini VCP Scanner", layout="wide")
@@ -51,4 +52,5 @@ if uploaded_file is not None:
         output_df.to_csv("TradingView_Export.csv", index=False)
         st.success("✅ File Ready for Download!")
         st.download_button(label="⬇ Download CSV", data=open("TradingView_Export.csv", "rb"), file_name="TradingView_Export.csv")
+
 
