@@ -1,7 +1,8 @@
 import pandas as pd
 import streamlit as st
-from scanner import is_valid_vcp, fetch_stock_data
+from vcp_detection import is_valid_vcp  # ✅ Fixed Circular Import
 from market import market_breadth_score
+from scanner import fetch_stock_data
 
 # ✅ Fetch Sector Performance Data
 def fetch_sector_data(ticker):
@@ -70,11 +71,4 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
     success_rate = df_results["Breakout Success"].mean() * 100
 
     return success_rate, df_results
-
-# ✅ Run Backtest (Example)
-if __name__ == "__main__":
-    tickers = ["AAPL", "TSLA", "NVDA", "MSFT"]
-    success_rate, results = backtest_vcp(tickers)
-    print(f"🔥 VCP Success Rate: {success_rate:.2f}%")
-    print(results)
 
