@@ -1,8 +1,8 @@
 import pandas as pd
 import streamlit as st
-from vcp_detection import is_valid_vcp
+from vcp_detection import is_valid_vcp  # ✅ Detects Valid VCP Pattern
 from market import market_breadth_score
-from data_fetch import fetch_stock_data  # ✅ FIXED CIRCULAR IMPORT
+from data_fetch import fetch_stock_data  # ✅ Fixed Circular Import
 
 # ✅ Fetch Sector Performance Data
 def fetch_sector_data(ticker):
@@ -21,6 +21,8 @@ def fetch_sector_data(ticker):
 # ✅ Run Backtest on Past VCP Setups
 def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
     """Backtest historical VCP setups and measure success rates."""
+    from scanner import is_successful_breakout  # 🔄 Import Inside Function to Avoid Circular Import
+
     results = []
 
     for ticker in tickers:
@@ -29,7 +31,7 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
             continue
 
         df = df.loc[start_date:end_date]
-        vcp_score = is_valid_vcp(ticker)
+        vcp_score = is_valid_vcp(df)  # ✅ Apply VCP Detection to DataFrame
 
         if vcp_score > 50:
             entry_price = df["c"].iloc[-1]  
@@ -56,7 +58,7 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
             })
 
     df_results = pd.DataFrame(results)
-    success_rate = df_results["Breakout Success"].mean() * 100
+    success_rate = df_results["Breakout Success"].mean() * 100 if not df_results.empty else 0
 
     return success_rate, df_results
 
