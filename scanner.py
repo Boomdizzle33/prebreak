@@ -3,15 +3,17 @@ import numpy as np
 import ta
 import streamlit as st
 from datetime import datetime, timedelta
-from institutional import institutional_score
-from market import market_breadth_score
-from backtest import breakout_probability
-from vcp_detection import is_valid_vcp
 from data_fetch import fetch_stock_data  # ✅ FIXED CIRCULAR IMPORT
 
 # ✅ Rank & Return Top 20 VCP Stocks
 def rank_best_trades(stocks):
     """Ranks stocks by VCP Strength, Institutional Activity, Market Strength, and Historical Breakout Probability."""
+    
+    from institutional import institutional_score  # 🔄 Moved Inside Function to Fix Circular Import
+    from market import market_breadth_score  # 🔄 Moved Inside Function to Fix Circular Import
+    from backtest import breakout_probability  # 🔄 Moved Inside Function to Fix Circular Import
+    from vcp_detection import is_valid_vcp  # 🔄 Moved Inside Function to Fix Circular Import
+
     trade_data = []
 
     for stock in stocks:
@@ -19,7 +21,7 @@ def rank_best_trades(stocks):
         if df is None:
             continue
 
-        vcp_score = is_valid_vcp(stock)
+        vcp_score = is_valid_vcp(df)  # ✅ Apply VCP Detection to DataFrame
         if vcp_score == 0:
             continue  
 
@@ -45,5 +47,6 @@ def rank_best_trades(stocks):
         })
 
     return sorted(trade_data, key=lambda x: x["Final Confidence Score"], reverse=True)[:20]
+
 
 
