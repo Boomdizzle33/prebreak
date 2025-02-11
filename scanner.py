@@ -1,4 +1,3 @@
-import requests
 import pandas as pd
 import numpy as np
 import ta
@@ -7,7 +6,8 @@ from datetime import datetime, timedelta
 from institutional import institutional_score
 from market import market_breadth_score
 from backtest import breakout_probability
-from vcp_detection import is_valid_vcp  # ✅ FIXED CIRCULAR IMPORT
+from vcp_detection import is_valid_vcp
+from data_fetch import fetch_stock_data  # ✅ FIXED CIRCULAR IMPORT
 
 # ✅ Rank & Return Top 20 VCP Stocks
 def rank_best_trades(stocks):
