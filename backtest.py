@@ -1,7 +1,6 @@
 import pandas as pd
-import streamlit as st
-from vcp_detection import is_valid_vcp  # ✅ Detects Valid VCP Pattern
 from market import market_breadth_score
+from vcp_detection import is_valid_vcp  # ✅ Fixed Import Order
 from data_fetch import fetch_stock_data  # ✅ Fixed Circular Import
 
 # ✅ Fetch Sector Performance Data
@@ -21,8 +20,6 @@ def fetch_sector_data(ticker):
 # ✅ Run Backtest on Past VCP Setups
 def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
     """Backtest historical VCP setups and measure success rates."""
-    from scanner import is_successful_breakout  # 🔄 Import Inside Function to Avoid Circular Import
-
     results = []
 
     for ticker in tickers:
@@ -31,10 +28,13 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
             continue
 
         df = df.loc[start_date:end_date]
-        vcp_score = is_valid_vcp(df)  # ✅ Apply VCP Detection to DataFrame
+        vcp_score = is_valid_vcp(ticker)  # ✅ Call function with ticker instead of DataFrame
 
         if vcp_score > 50:
             entry_price = df["c"].iloc[-1]  
+
+            # 🔄 **Import Inside Function to Avoid Circular Import**
+            from scanner import is_successful_breakout  
             breakout_success = is_successful_breakout(df, entry_price)
 
             # ✅ Market Strength Filtering
@@ -44,10 +44,13 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
 
             # ✅ Sector Performance Filtering
             sector_df = fetch_sector_data(ticker)
-            if sector_df is not None:
+            sector_performance = False  # Default Value
+
+            if sector_df is not None and not sector_df.empty:
                 sector_performance = df["c"].pct_change().sum() > sector_df["c"].pct_change().sum()
-                if not sector_performance:
-                    continue  
+
+            if not sector_performance:
+                continue  
 
             results.append({
                 "Stock": ticker,
@@ -61,4 +64,7 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
     success_rate = df_results["Breakout Success"].mean() * 100 if not df_results.empty else 0
 
     return success_rate, df_results
+
+
+    
 
