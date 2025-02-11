@@ -5,7 +5,6 @@ from config import POLYGON_API_KEY
 
 # ✅ Fetch Stock Data from Polygon.io
 def fetch_stock_data(ticker, days=100):
-    """Fetch historical stock data from Polygon.io"""
     end_date = datetime.now()
     start_date = end_date - timedelta(days=days)
     
@@ -18,3 +17,4 @@ def fetch_stock_data(ticker, days=100):
         df.set_index('date', inplace=True)
         return df
     return None
+
