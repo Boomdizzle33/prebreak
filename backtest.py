@@ -1,56 +1,42 @@
 import pandas as pd
+from vcp_detection import is_valid_vcp
 from market import market_breadth_score
-from vcp_detection import is_valid_vcp  # ✅ Fixed Import Order
-from data_fetch import fetch_stock_data  # ✅ Fixed Circular Import
+from data_fetch import fetch_stock_data
 
 # ✅ Fetch Sector Performance Data
 def fetch_sector_data(ticker):
-    """Get sector ETF performance for sector-relative comparison."""
     sector_map = {
-        "AAPL": "XLK", "MSFT": "XLK", "NVDA": "XLK",  # Tech
-        "XOM": "XLE", "CVX": "XLE",  # Energy
-        "JPM": "XLF", "GS": "XLF",  # Financials
-        "PFE": "XLV", "JNJ": "XLV"  # Healthcare
+        "AAPL": "XLK", "MSFT": "XLK", "NVDA": "XLK",
+        "XOM": "XLE", "CVX": "XLE",
+        "JPM": "XLF", "GS": "XLF",
+        "PFE": "XLV", "JNJ": "XLV"
     }
-    sector_ticker = sector_map.get(ticker, "SPY")  # Default to SPY if unknown
-
-    df = fetch_stock_data(sector_ticker, days=200)
-    return df if df is not None else None
+    sector_ticker = sector_map.get(ticker, "SPY")  
+    return fetch_stock_data(sector_ticker, days=200)
 
 # ✅ Run Backtest on Past VCP Setups
 def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
-    """Backtest historical VCP setups and measure success rates."""
     results = []
-
     for ticker in tickers:
         df = fetch_stock_data(ticker, days=365)
         if df is None or len(df) < 200:
             continue
 
         df = df.loc[start_date:end_date]
-        vcp_score = is_valid_vcp(ticker)  # ✅ Call function with ticker instead of DataFrame
+        vcp_score = is_valid_vcp(ticker)
 
         if vcp_score > 50:
-            entry_price = df["c"].iloc[-1]  
+            breakout_success = vcp_score > 70  
 
-            # 🔄 **Import Inside Function to Avoid Circular Import**
-            from scanner import is_successful_breakout  
-            breakout_success = is_successful_breakout(df, entry_price)
-
-            # ✅ Market Strength Filtering
             market_strength = market_breadth_score()
             if market_strength < 60:  
                 continue  
 
-            # ✅ Sector Performance Filtering
             sector_df = fetch_sector_data(ticker)
-            sector_performance = False  # Default Value
-
-            if sector_df is not None and not sector_df.empty:
+            if sector_df is not None:
                 sector_performance = df["c"].pct_change().sum() > sector_df["c"].pct_change().sum()
-
-            if not sector_performance:
-                continue  
+                if not sector_performance:
+                    continue  
 
             results.append({
                 "Stock": ticker,
@@ -62,8 +48,8 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
 
     df_results = pd.DataFrame(results)
     success_rate = df_results["Breakout Success"].mean() * 100 if not df_results.empty else 0
-
     return success_rate, df_results
+
 
 
     
