@@ -1,18 +1,16 @@
 import pandas as pd
 import numpy as np
-import ta
 import streamlit as st
-from datetime import datetime, timedelta
-from data_fetch import fetch_stock_data  # ✅ FIXED CIRCULAR IMPORT
+from data_fetch import fetch_stock_data  # ✅ Fixed Circular Import
 
 # ✅ Rank & Return Top 20 VCP Stocks
 def rank_best_trades(stocks):
     """Ranks stocks by VCP Strength, Institutional Activity, Market Strength, and Historical Breakout Probability."""
     
-    from institutional import institutional_score  # 🔄 Moved Inside Function to Fix Circular Import
-    from market import market_breadth_score  # 🔄 Moved Inside Function to Fix Circular Import
-    from backtest import breakout_probability  # 🔄 Moved Inside Function to Fix Circular Import
-    from vcp_detection import is_valid_vcp  # 🔄 Moved Inside Function to Fix Circular Import
+    from institutional import institutional_score  # 🔄 Moved Inside Function
+    from market import market_breadth_score  # 🔄 Moved Inside Function
+    from backtest import breakout_probability  # 🔄 Moved Inside Function
+    from vcp_detection import is_valid_vcp  # 🔄 Moved Inside Function
 
     trade_data = []
 
@@ -21,7 +19,7 @@ def rank_best_trades(stocks):
         if df is None:
             continue
 
-        vcp_score = is_valid_vcp(df)  # ✅ Apply VCP Detection to DataFrame
+        vcp_score = is_valid_vcp(stock)
         if vcp_score == 0:
             continue  
 
