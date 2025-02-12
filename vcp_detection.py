@@ -7,7 +7,7 @@ from data_fetch import fetch_stock_data
 VCP_WEIGHTS = {
     "ATR_Contraction": 0.25,
     "Volume_Contraction": 0.2,
-    "Higher_Lows": 0.15,
+    "Pullback_Contraction": 0.2,
     "Pivot_Level": 0.1,
     "SMA_Trend": 0.1,
     "52_Week_High": 0.1,
@@ -16,7 +16,7 @@ VCP_WEIGHTS = {
 }
 
 def is_valid_vcp(ticker):
-    """Detects a valid VCP pattern using enhanced logic including pullback tracking, volume expansion, and closing range validation."""
+    """Detects a valid VCP pattern with flexible pullback tolerance and ATR-based contraction."""
     df = fetch_stock_data(ticker, days=250)  # Extended timeframe for trend analysis
     if df is None or df.empty:
         return 0
@@ -28,10 +28,13 @@ def is_valid_vcp(ticker):
         df['Volume_Contraction'] = (df['v'] < df['Volume_MA'] * 0.7).sum()
         df['Pullback_Size'] = df['c'].diff().rolling(5).sum()
 
-        # ✅ Track at least 3-4 pullbacks with progressively smaller contractions
+        # ✅ Allow Pullback Contraction with Some Tolerance
         pullbacks = df['Pullback_Size'].rolling(3).sum().dropna()
-        progressive_pullback = pullbacks.iloc[-3] > pullbacks.iloc[-2] > pullbacks.iloc[-1]
-        df['Higher_Lows'] = progressive_pullback
+        contraction_trend = np.polyfit(range(len(pullbacks[-3:])), pullbacks[-3:], 1)[0]  # Fit a trend line
+        contraction_tolerance = pullbacks.iloc[-3] >= pullbacks.iloc[-2] or pullbacks.iloc[-2] >= pullbacks.iloc[-1]  
+        pullback_contraction = contraction_trend < 0 or contraction_tolerance  # General downward trend with flexibility
+
+        df['Pullback_Contraction'] = pullback_contraction
 
         df['Pivot_Level'] = df['c'].rolling(20).max().iloc[-1] * 0.98
 
@@ -55,7 +58,7 @@ def is_valid_vcp(ticker):
         vcp_score = (
             (df['ATR_Contraction'].iloc[-1] * VCP_WEIGHTS['ATR_Contraction']) +
             (df['Volume_Contraction'] * VCP_WEIGHTS['Volume_Contraction']) +
-            (df['Higher_Lows'] * VCP_WEIGHTS['Higher_Lows']) +
+            (df['Pullback_Contraction'] * VCP_WEIGHTS['Pullback_Contraction']) +
             (df['Pivot_Level'] * VCP_WEIGHTS['Pivot_Level']) +
             (in_trend * VCP_WEIGHTS['SMA_Trend']) +
             (near_high * VCP_WEIGHTS['52_Week_High']) +
@@ -66,4 +69,5 @@ def is_valid_vcp(ticker):
     except Exception as e:
         print(f"VCP calculation error: {e}")
     return 0
+
 
