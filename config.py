@@ -1,4 +1,3 @@
-import streamlit as st
+POLYGON_API_KEY = "your_polygon_api_key_here"
+YFINANCE_ENABLED = True  # ✅ Allow backtesting with YFinance
 
-# ✅ Fetch API key from Streamlit secrets
-POLYGON_API_KEY = st.secrets["POLYGON_API_KEY"]
