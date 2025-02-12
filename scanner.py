@@ -1,17 +1,22 @@
 import pandas as pd
+import streamlit as st
 from concurrent.futures import ThreadPoolExecutor
 from vcp_detection import is_valid_vcp
 from institutional import institutional_score
 from market import market_breadth_score
 from data_fetch import fetch_stock_data
-from backtest import backtest_vcp  # ✅ Import the backtest function
+from backtest import backtest_vcp
 
 def rank_best_trades(stocks):
-    """Ranks top stocks based on VCP, institutional, and market scores, and backtest success rate."""
+    """Ranks top stocks based on VCP, institutional, and market scores, and backtest success rate with a progress bar."""
     trade_data = []
     market_strength = market_breadth_score()
-
-    def process_stock(stock):
+    
+    # ✅ Initialize Streamlit Progress Bar
+    progress_bar = st.progress(0)
+    total_stocks = len(stocks)
+    
+    def process_stock(stock, progress):
         df = fetch_stock_data(stock, days=50)
         if df is None:
             return None
@@ -32,6 +37,9 @@ def rank_best_trades(stocks):
             (success_rate * 0.1)  # ✅ Give weight to historical success rate
         )
 
+        # ✅ Update Progress Bar
+        progress_bar.progress((progress + 1) / total_stocks)
+
         return {
             "Stock": stock,
             "VCP Score": vcp_score,
@@ -42,8 +50,11 @@ def rank_best_trades(stocks):
         }
 
     with ThreadPoolExecutor() as executor:
-        results = list(executor.map(process_stock, stocks))
+        results = list(executor.map(process_stock, stocks, range(total_stocks)))
 
+    # ✅ Complete progress bar after scanning
+    progress_bar.progress(1.0)
+    
     return sorted([r for r in results if r], key=lambda x: x["Final Confidence Score"], reverse=True)[:20]
 
 
