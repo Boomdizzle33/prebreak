@@ -18,7 +18,7 @@ VCP_WEIGHTS = {
 def is_valid_vcp(ticker):
     """Detects a valid VCP pattern and calculates a score."""
     df = fetch_stock_data(ticker, days=250)
-    
+
     # ✅ Ensure data is available and has required columns
     if df is None or df.empty or not all(col in df.columns for col in ["h", "l", "c", "v"]):
         print(f"⚠️ No valid data for {ticker} (Columns missing or DataFrame empty)")
@@ -35,37 +35,43 @@ def is_valid_vcp(ticker):
             return 0
 
         # ✅ ATR Contraction Calculation
-        df['ATR_Contraction'] = df['ATR'].diff().rolling(5).sum()
+        df['ATR_Contraction'] = df['ATR'].diff().rolling(5, min_periods=1).sum()
         atr_contraction = df['ATR_Contraction'].iloc[-1] if not df['ATR_Contraction'].isna().all() else 0
 
         # ✅ Volume Contraction Calculation
-        df['Volume_MA'] = df['v'].rolling(20).mean()
+        df['Volume_MA'] = df['v'].rolling(20, min_periods=1).mean()
         df['Volume_Contraction'] = (df['v'] < df['Volume_MA'] * 0.7).astype(int)
         volume_contraction = df['Volume_Contraction'].iloc[-1] if not df['Volume_Contraction'].isna().all() else 0
 
         # ✅ Pullback Contraction (Ensure enough data)
-        df['Pullback_Size'] = df['c'].diff().rolling(5).sum()
-        pullbacks = df['Pullback_Size'].rolling(3).sum().dropna()
+        df['Pullback_Size'] = df['c'].diff().rolling(5, min_periods=1).sum()
+        pullbacks = df['Pullback_Size'].rolling(3, min_periods=1).sum().dropna()
         contraction_trend = np.polyfit(range(len(pullbacks[-3:])), pullbacks[-3:], 1)[0] if len(pullbacks) >= 3 else 0
         pullback_contraction = int(contraction_trend < 0)
 
-        # ✅ Pivot Level Calculation
-        pivot_level = df['c'].rolling(20).max().iloc[-1] * 0.98 if not df['c'].rolling(20).max().isna().all() else 0
+        # ✅ Pivot Level Calculation (Fix NaN handling)
+        if len(df) >= 20:
+            pivot_level = df['c'].rolling(20, min_periods=1).max().iloc[-1] * 0.98
+        else:
+            pivot_level = 0
 
-        # ✅ SMA Trend Calculation
-        df['50_SMA'] = df['c'].rolling(50).mean()
-        df['200_SMA'] = df['c'].rolling(200).mean()
+        # ✅ SMA Trend Calculation (Ensure enough data)
+        df['50_SMA'] = df['c'].rolling(50, min_periods=1).mean()
+        df['200_SMA'] = df['c'].rolling(200, min_periods=1).mean()
         in_trend = int((df['c'].iloc[-1] > df['50_SMA'].iloc[-1]) and (df['50_SMA'].iloc[-1] > df['200_SMA'].iloc[-1]))
 
-        # ✅ 52-Week High Position
-        df['52_Week_High'] = df['c'].rolling(252).max()
-        near_high = int(df['c'].iloc[-1] >= (df['52_Week_High'].iloc[-1] * 0.90)) if not df['52_Week_High'].isna().all() else 0
+        # ✅ 52-Week High Position (Fix NaN handling)
+        if len(df) >= 252:
+            df['52_Week_High'] = df['c'].rolling(252, min_periods=1).max()
+            near_high = int(df['c'].iloc[-1] >= (df['52_Week_High'].iloc[-1] * 0.90)) if not df['52_Week_High'].isna().all() else 0
+        else:
+            near_high = 0
 
         # ✅ Volume Expansion
-        df['Relative_Volume'] = df['v'] / df['v'].rolling(5).mean()
+        df['Relative_Volume'] = df['v'] / df['v'].rolling(5, min_periods=1).mean()
         volume_expansion = int(df['Relative_Volume'].iloc[-1] > 1.3 if not df['Relative_Volume'].isna().all() else 0)
 
-        # ✅ Closing Strength Calculation
+        # ✅ Closing Strength Calculation (Fix division errors)
         daily_range = df['h'].iloc[-1] - df['l'].iloc[-1]
         closing_position = (df['c'].iloc[-1] - df['l'].iloc[-1]) / daily_range if daily_range > 0 else 0
         strong_closing_range = int(closing_position >= 0.8)
@@ -88,6 +94,7 @@ def is_valid_vcp(ticker):
         print(f"❌ VCP calculation error for {ticker}: {e}")
     
     return 0
+
 
 
 
