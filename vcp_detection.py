@@ -70,4 +70,3 @@ def is_valid_vcp(ticker):
         print(f"VCP calculation error: {e}")
     return 0
 
-
