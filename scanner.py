@@ -7,9 +7,9 @@ from datetime import datetime, timedelta
 from functools import lru_cache
 
 # ✅ Secure API Key Handling
-POLYGON_API_KEY = st.secrets["POLYGON_API_KEY"] if "POLYGON_API_KEY" in st.secrets else "YOUR_POLYGON_API_KEY"
+POLYGON_API_KEY = st.secrets.get("POLYGON_API_KEY", "YOUR_POLYGON_API_KEY")
 
-# ✅ Fetch latest stock data
+# ✅ Fetch stock data
 @lru_cache(maxsize=100)
 def fetch_stock_data(ticker, days=365):
     try:
@@ -28,31 +28,39 @@ def fetch_stock_data(ticker, days=365):
             df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}, inplace=True)
             return df
     except Exception as e:
-        print(f"❌ Error fetching data for {ticker}: {e}")
+        st.error(f"❌ Error fetching data for {ticker}: {e}")
         return pd.DataFrame()
 
-# ✅ Calculate Relative Strength vs. SPY
+# ✅ Relative Strength vs. SPY
 def fetch_relative_strength(ticker, benchmark="SPY"):
-    df_stock = fetch_stock_data(ticker, days=365)
-    df_benchmark = fetch_stock_data(benchmark, days=365)
+    try:
+        df_stock = fetch_stock_data(ticker, days=365)
+        df_benchmark = fetch_stock_data(benchmark, days=365)
 
-    if df_stock.empty or df_benchmark.empty:
+        if df_stock.empty or df_benchmark.empty:
+            return False
+
+        df_stock["RS"] = df_stock["Close"] / df_benchmark["Close"]
+        df_stock["RS_Trend"] = df_stock["RS"].rolling(20).mean().diff()
+
+        return df_stock["RS_Trend"].iloc[-1] > 0
+    except Exception as e:
+        st.error(f"❌ Error calculating relative strength for {ticker}: {e}")
         return False
-
-    df_stock["RS"] = df_stock["Close"] / df_benchmark["Close"]
-    df_stock["RS_Trend"] = df_stock["RS"].rolling(20).mean().diff()
-
-    return df_stock["RS_Trend"].iloc[-1] > 0
 
 # ✅ Anchored VWAP Calculation
 def calculate_avwap(df):
-    if df.empty or "Volume" not in df.columns or df["Volume"].sum() == 0:
-        return None
+    try:
+        if df.empty or "Volume" not in df.columns or df["Volume"].sum() == 0:
+            return None
 
-    df["Cumulative_TPV"] = (df["Close"] * df["Volume"]).cumsum()
-    df["Cumulative_Volume"] = df["Volume"].cumsum()
-    df["AVWAP"] = df["Cumulative_TPV"] / df["Cumulative_Volume"]
-    return df["AVWAP"]
+        df["Cumulative_TPV"] = (df["Close"] * df["Volume"]).cumsum()
+        df["Cumulative_Volume"] = df["Volume"].cumsum()
+        df["AVWAP"] = df["Cumulative_TPV"] / df["Cumulative_Volume"]
+        return df["AVWAP"]
+    except Exception as e:
+        st.error(f"❌ Error calculating AVWAP: {e}")
+        return None
 
 # ✅ VCP Detection Algorithm
 def is_valid_vcp(ticker):
@@ -89,7 +97,7 @@ def is_valid_vcp(ticker):
         return round(vcp_score * 100, 2) if vcp_score > 50 else 0
 
     except Exception as e:
-        print(f"❌ Error processing VCP for {ticker}: {e}")
+        st.error(f"❌ Error processing VCP for {ticker}: {e}")
         return 0
 
 # ✅ Backtesting VCP Setups
@@ -98,23 +106,27 @@ def backtest_vcp(ticker):
     if df.empty:
         return None
 
-    df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
+    try:
+        df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
 
-    entry_price = df["Close"].iloc[-1]
-    stop_loss = entry_price - (1.5 * df["ATR"].iloc[-1])
-    target_price = entry_price + (3 * (entry_price - stop_loss))  # ✅ 2:1 Risk-Reward
+        entry_price = df["Close"].iloc[-1]
+        stop_loss = entry_price - (1.5 * df["ATR"].iloc[-1])
+        target_price = entry_price + (3 * (entry_price - stop_loss))  # ✅ 2:1 Risk-Reward
 
-    max_future_price = df["Close"].iloc[-10:].max()
-    success = max_future_price >= target_price
+        max_future_price = df["Close"].iloc[-10:].max()
+        success = max_future_price >= target_price
 
-    return {
-        "Stock": ticker,
-        "Entry Price": round(entry_price, 2),
-        "Stop Loss": round(stop_loss, 2),
-        "Target Price": round(target_price, 2),
-        "Max Future Price": round(max_future_price, 2),
-        "Success": success
-    }
+        return {
+            "Stock": ticker,
+            "Entry Price": round(entry_price, 2),
+            "Stop Loss": round(stop_loss, 2),
+            "Target Price": round(target_price, 2),
+            "Max Future Price": round(max_future_price, 2),
+            "Success": success
+        }
+    except Exception as e:
+        st.error(f"❌ Error during backtesting for {ticker}: {e}")
+        return None
 
 # ✅ Streamlit UI
 st.set_page_config(page_title="🚀 Minervini VCP Scanner", layout="wide")
@@ -130,9 +142,12 @@ if uploaded_file is not None:
     
     results = []
     backtest_results = []
+    progress_bar = st.progress(0)  # ✅ Progress Bar
     
-    for stock in stocks:
+    for i, stock in enumerate(stocks):
         vcp_score = is_valid_vcp(stock)
+        progress_bar.progress((i + 1) / len(stocks))  # ✅ Update Progress
+        
         if vcp_score >= 50:
             backtest_result = backtest_vcp(stock)
             if backtest_result:
@@ -140,6 +155,8 @@ if uploaded_file is not None:
                 results.append(backtest_result)
                 backtest_results.append(backtest_result)
 
+    progress_bar.empty()  # ✅ Remove Progress Bar When Done
+    
     st.subheader("🏆 Confirmed VCP Stocks (2:1 R:R)")
     if results:
         st.dataframe(pd.DataFrame(results))
@@ -149,6 +166,5 @@ if uploaded_file is not None:
         st.dataframe(pd.DataFrame(backtest_results))
     else:
         st.warning("⚠️ No valid VCP setups found in backtest.")
-
 
 
