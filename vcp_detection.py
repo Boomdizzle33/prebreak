@@ -26,19 +26,18 @@ def is_valid_vcp(ticker):
         
         # ✅ Fix: Ensure calculations return Pandas Series, not scalars
         df['ATR_Contraction'] = df['ATR'].diff().rolling(5).sum()
-        df['ATR_Contraction'] = pd.Series(df['ATR_Contraction'], index=df.index)  # ✅ Fix scalar issue
-
+        
         df['Volume_MA'] = df['v'].rolling(20).mean()
         df['Volume_Contraction'] = (df['v'] < df['Volume_MA'] * 0.7).sum()
-        df['Volume_Contraction'] = pd.Series(df['Volume_Contraction'], index=df.index)  # ✅ Fix scalar issue
-        
+
         df['Pullback_Size'] = df['c'].diff().rolling(5).sum()
 
         # ✅ Fix: Ensure Pullback Contraction is a Series, not a scalar
         pullbacks = df['Pullback_Size'].rolling(3).sum().dropna()
         contraction_trend = np.polyfit(range(len(pullbacks[-3:])), pullbacks[-3:], 1)[0]
         pullback_contraction = contraction_trend < 0  
-        df['Pullback_Contraction'] = pd.Series(pullback_contraction, index=df.index)  # ✅ Fix scalar issue
+
+        df['Pullback_Contraction'] = pullback_contraction
 
         df['Pivot_Level'] = df['c'].rolling(20).max().iloc[-1] * 0.98
 
@@ -54,26 +53,29 @@ def is_valid_vcp(ticker):
         # ✅ Require Volume Expansion Near Breakout Points
         df['Relative_Volume'] = df['v'].iloc[-1] / df['v'].rolling(5).mean().iloc[-1]
         volume_expansion = df['Relative_Volume'] > 1.3
-        df['Volume_Expansion'] = pd.Series(volume_expansion, index=df.index)  # ✅ Fix scalar issue
+        df['Volume_Expansion'] = volume_expansion  # No need for Series conversion
 
         # ✅ Ensure Stock Closes in Top 20% of Daily Range Before Breakout
         daily_range = df['h'].iloc[-1] - df['l'].iloc[-1]
         closing_position = (df['c'].iloc[-1] - df['l'].iloc[-1]) / daily_range
         strong_closing_range = closing_position >= 0.8  # Top 20% of the day's range
-        df['Closing_Strength'] = pd.Series(strong_closing_range, index=df.index)  # ✅ Fix scalar issue
+        df['Closing_Strength'] = strong_closing_range  # No need for Series conversion
 
         vcp_score = (
             (df['ATR_Contraction'].iloc[-1] * VCP_WEIGHTS['ATR_Contraction']) +
-            (df['Volume_Contraction'].iloc[-1] * VCP_WEIGHTS['Volume_Contraction']) +
-            (df['Pullback_Contraction'].iloc[-1] * VCP_WEIGHTS['Pullback_Contraction']) +
+            (df['Volume_Contraction'] * VCP_WEIGHTS['Volume_Contraction']) +
+            (df['Pullback_Contraction'] * VCP_WEIGHTS['Pullback_Contraction']) +
             (df['Pivot_Level'] * VCP_WEIGHTS['Pivot_Level']) +
             (in_trend * VCP_WEIGHTS['SMA_Trend']) +
             (near_high * VCP_WEIGHTS['52_Week_High']) +
-            (df['Volume_Expansion'].iloc[-1] * VCP_WEIGHTS['Volume_Expansion']) +
-            (df['Closing_Strength'].iloc[-1] * VCP_WEIGHTS['Closing_Strength'])
+            (df['Volume_Expansion'] * VCP_WEIGHTS['Volume_Expansion']) +
+            (df['Closing_Strength'] * VCP_WEIGHTS['Closing_Strength'])
         )
+
         return round(vcp_score * 100, 2) if vcp_score > 0.5 else 0
+    
     except Exception as e:
         print(f"VCP calculation error: {e}")
+    
     return 0
 
