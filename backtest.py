@@ -3,8 +3,8 @@ from vcp_detection import is_valid_vcp
 from market import market_breadth_score
 from data_fetch import fetch_stock_data
 
-# ✅ Fetch Sector Performance Data
 def fetch_sector_data(ticker):
+    """Retrieve sector ETF data to compare against individual stock performance."""
     sector_map = {
         "AAPL": "XLK", "MSFT": "XLK", "NVDA": "XLK",
         "XOM": "XLE", "CVX": "XLE",
@@ -14,9 +14,10 @@ def fetch_sector_data(ticker):
     sector_ticker = sector_map.get(ticker, "SPY")  
     return fetch_stock_data(sector_ticker, days=200)
 
-# ✅ Run Backtest on Past VCP Setups
 def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
+    """Backtests historical VCP setups to evaluate success rates."""
     results = []
+
     for ticker in tickers:
         df = fetch_stock_data(ticker, days=365)
         if df is None or len(df) < 200:
@@ -33,7 +34,7 @@ def backtest_vcp(tickers, start_date="2023-01-01", end_date="2023-12-31"):
                 continue  
 
             sector_df = fetch_sector_data(ticker)
-            if sector_df is not None:
+            if sector_df is not None and "c" in df.columns and "c" in sector_df.columns:
                 sector_performance = df["c"].pct_change().sum() > sector_df["c"].pct_change().sum()
                 if not sector_performance:
                     continue  
