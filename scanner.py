@@ -55,13 +55,11 @@ def fetch_stock_data(ticker, days=365):
 def is_valid_vcp(ticker):
     df = fetch_stock_data(ticker, days=250)
     if df.empty or not all(col in df.columns for col in ["High", "Low", "Close", "Volume"]):
-        print(f"⚠️ No valid data for {ticker} (Missing columns)")
         return 0
 
     try:
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
         if df["ATR"].isna().all():
-            print(f"⚠️ ATR calculation failed for {ticker} (NaN values)")
             return 0
 
         df["ATR_Contraction"] = df["ATR"].diff().rolling(5, min_periods=1).sum()
@@ -88,13 +86,11 @@ def backtest_vcp(ticker):
     df = fetch_stock_data(ticker, days=365)
     
     if df.empty or "Close" not in df.columns:
-        print(f"⚠️ No Polygon.io data for {ticker}")
         return None
 
     df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
     
     if df["ATR"].isna().all():
-        print(f"⚠️ ATR calculation failed for {ticker} (NaN values)")
         return None
 
     entry_price = df["Close"].iloc[-1]
@@ -113,12 +109,12 @@ def backtest_vcp(ticker):
         "Success": success
     }
 
-# ✅ Rank and Process Stocks
+# ✅ Rank and Process Stocks (Fixed Progress Bar)
 def rank_best_trades(stocks):
     ranked_trades = []
-    progress_bar = st.progress(0)
+    progress_placeholder = st.empty()  # ✅ Create a placeholder for progress bar
 
-    def process_stock(stock, progress):
+    def process_stock(stock):
         vcp_score = is_valid_vcp(stock)
         if vcp_score == 0:
             return None
@@ -130,15 +126,17 @@ def rank_best_trades(stocks):
         success_rate = 1 if backtest_result["Success"] else 0
         final_score = (vcp_score * 0.8) + (success_rate * 0.2)
 
-        progress_bar.progress((progress + 1) / len(stocks))
-
         return {**backtest_result, "VCP Score": vcp_score, "Final Score": round(final_score, 2)}
 
+    results = []
     with ThreadPoolExecutor() as executor:
-        results = list(executor.map(process_stock, stocks, range(len(stocks))))
+        for i, result in enumerate(executor.map(process_stock, stocks)):
+            if result:
+                results.append(result)
+            progress_placeholder.progress((i + 1) / len(stocks))  # ✅ Update progress bar in main thread
 
-    progress_bar.progress(1.0)
-    return sorted([r for r in results if r], key=lambda x: x["Final Score"], reverse=True)[:20]
+    progress_placeholder.empty()  # ✅ Remove progress bar after scanning
+    return sorted(results, key=lambda x: x["Final Score"], reverse=True)[:20]
 
 # ✅ Streamlit UI
 st.set_page_config(page_title="🚀 Minervini VCP Scanner", layout="wide")
