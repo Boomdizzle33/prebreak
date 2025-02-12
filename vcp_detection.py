@@ -5,16 +5,18 @@ from data_fetch import fetch_stock_data
 
 # ✅ Improved VCP Scoring Weights
 VCP_WEIGHTS = {
-    "ATR_Contraction": 0.3,
+    "ATR_Contraction": 0.25,
     "Volume_Contraction": 0.2,
-    "Higher_Lows": 0.2,
+    "Higher_Lows": 0.15,
     "Pivot_Level": 0.1,
     "SMA_Trend": 0.1,
-    "52_Week_High": 0.1
+    "52_Week_High": 0.1,
+    "Volume_Expansion": 0.05,
+    "Closing_Strength": 0.05
 }
 
 def is_valid_vcp(ticker):
-    """Detects a valid VCP pattern using enhanced logic including SMA confirmation and pullback tracking."""
+    """Detects a valid VCP pattern using enhanced logic including pullback tracking, volume expansion, and closing range validation."""
     df = fetch_stock_data(ticker, days=250)  # Extended timeframe for trend analysis
     if df is None or df.empty:
         return 0
@@ -25,7 +27,12 @@ def is_valid_vcp(ticker):
         df['Volume_MA'] = df['v'].rolling(20).mean()
         df['Volume_Contraction'] = (df['v'] < df['Volume_MA'] * 0.7).sum()
         df['Pullback_Size'] = df['c'].diff().rolling(5).sum()
-        df['Higher_Lows'] = (df['Pullback_Size'].iloc[-3] < df['Pullback_Size'].iloc[-2] < df['Pullback_Size'].iloc[-1])
+
+        # ✅ Track at least 3-4 pullbacks with progressively smaller contractions
+        pullbacks = df['Pullback_Size'].rolling(3).sum().dropna()
+        progressive_pullback = pullbacks.iloc[-3] > pullbacks.iloc[-2] > pullbacks.iloc[-1]
+        df['Higher_Lows'] = progressive_pullback
+
         df['Pivot_Level'] = df['c'].rolling(20).max().iloc[-1] * 0.98
 
         # ✅ Confirm Stock is in an Uptrend using SMA
@@ -36,14 +43,24 @@ def is_valid_vcp(ticker):
         # ✅ Ensure Stock is Near 52-Week High Before Confirming Breakout
         df['52_Week_High'] = df['c'].rolling(252).max()
         near_high = df['c'].iloc[-1] >= (df['52_Week_High'].iloc[-1] * 0.95)  # Stock within 5% of 52-week high
-        
+
+        # ✅ Require Volume Expansion Near Breakout Points
+        df['Volume_Expansion'] = df['v'].iloc[-1] > df['Volume_MA'].iloc[-1] * 1.5  # 50% higher volume than average
+
+        # ✅ Ensure Stock Closes in Top 20% of Daily Range Before Breakout
+        daily_range = df['h'].iloc[-1] - df['l'].iloc[-1]
+        closing_position = (df['c'].iloc[-1] - df['l'].iloc[-1]) / daily_range
+        strong_closing_range = closing_position >= 0.8  # Top 20% of the day's range
+
         vcp_score = (
             (df['ATR_Contraction'].iloc[-1] * VCP_WEIGHTS['ATR_Contraction']) +
             (df['Volume_Contraction'] * VCP_WEIGHTS['Volume_Contraction']) +
             (df['Higher_Lows'] * VCP_WEIGHTS['Higher_Lows']) +
             (df['Pivot_Level'] * VCP_WEIGHTS['Pivot_Level']) +
             (in_trend * VCP_WEIGHTS['SMA_Trend']) +
-            (near_high * VCP_WEIGHTS['52_Week_High'])
+            (near_high * VCP_WEIGHTS['52_Week_High']) +
+            (df['Volume_Expansion'] * VCP_WEIGHTS['Volume_Expansion']) +
+            (strong_closing_range * VCP_WEIGHTS['Closing_Strength'])
         )
         return round(vcp_score * 100, 2) if vcp_score > 0.5 else 0
     except Exception as e:
