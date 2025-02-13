@@ -32,25 +32,7 @@ def fetch_stock_data(ticker, days=365):
         st.error(f"❌ Error fetching data for {ticker}: {e}")
         return pd.DataFrame()
 
-# ✅ Market Breadth Filter (SPX % above 50-SMA)
-def fetch_market_breadth():
-    sp500 = fetch_stock_data("SPY", days=365)
-    sp500["Above_50SMA"] = sp500["Close"] > sp500["Close"].rolling(50).mean()
-    return sp500["Above_50SMA"].mean()
-
-# ✅ Check Relative Strength vs SPY
-def fetch_relative_strength(ticker, benchmark="SPY"):
-    df_stock = fetch_stock_data(ticker, days=365)
-    df_benchmark = fetch_stock_data(benchmark, days=365)
-
-    if df_stock.empty or df_benchmark.empty:
-        return None
-
-    df_stock["RS"] = df_stock["Close"] / df_benchmark["Close"]
-    df_stock["RS_Trend"] = df_stock["RS"].rolling(20).mean().diff()
-    return df_stock["RS_Trend"].iloc[-1] > 0
-
-# ✅ VCP Detection with Debugging
+# ✅ Check VCP pattern with full debugging output
 def is_valid_vcp(ticker):
     df = fetch_stock_data(ticker, days=365)
     if df.empty or len(df) < 200:
@@ -69,7 +51,7 @@ def is_valid_vcp(ticker):
         # ✅ ATR Calculation (Less Strict)
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
         df["ATR_Contraction"] = df["ATR"].rolling(50).mean() / df["ATR"]
-        is_tight = df["ATR_Contraction"].iloc[-1] >= 2.0
+        is_tight = df["ATR_Contraction"].iloc[-1] >= 2.0  
 
         # ✅ Volume Contraction (Less Strict)
         df["Volume_MA"] = df["Volume"].rolling(20, min_periods=1).mean()
@@ -80,8 +62,18 @@ def is_valid_vcp(ticker):
 
         relative_strength = fetch_relative_strength(ticker)
 
-        # ✅ Final VCP Score
+        # ✅ Calculate final VCP score
         vcp_score = (is_tight * 0.3) + (df["Volume_Contraction"].iloc[-1] * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (relative_strength * 0.1)
+
+        # ✅ Real-time debugging in Streamlit
+        st.subheader(f"📊 **VCP Debugging for {ticker}**")
+        st.write(f"📌 **50-SMA:** {df['50_SMA'].iloc[-1]:.2f}, **200-SMA:** {df['200_SMA'].iloc[-1]:.2f}")
+        st.write(f"📌 **Trend Confirmation:** {in_trend}")
+        st.write(f"📌 **ATR Contraction:** {df['ATR_Contraction'].iloc[-1]:.2f} (Threshold: 2.0)")
+        st.write(f"📌 **Volume Contraction:** {df['Volume_Contraction'].iloc[-1]}")
+        st.write(f"📌 **Near Pivot:** {is_near_pivot}")
+        st.write(f"📌 **Relative Strength:** {relative_strength}")
+        st.write(f"✅ **Final VCP Score:** {round(vcp_score * 100, 2)}")
 
         return round(vcp_score * 100, 2)
     except Exception as e:
@@ -98,7 +90,7 @@ def backtest_vcp(ticker, vcp_score):
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
         entry_price = df["Close"].iloc[-1]
         stop_loss = entry_price - (1.5 * df["ATR"].iloc[-1])
-        target_price = entry_price + (3 * (entry_price - stop_loss))  # ✅ 2:1 Risk-Reward
+        target_price = entry_price + (3 * (entry_price - stop_loss))  
 
         max_future_price = df["Close"].iloc[-10:].max()
         success = max_future_price >= target_price
@@ -149,6 +141,7 @@ if uploaded_file is not None:
         st.dataframe(pd.DataFrame(backtest_results))
     else:
         st.warning("⚠️ No valid VCP setups found in backtest.")
+
 
 
 
