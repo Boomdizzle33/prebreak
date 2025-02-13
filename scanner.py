@@ -9,7 +9,7 @@ from functools import lru_cache
 # ✅ Secure API Key Handling
 POLYGON_API_KEY = st.secrets.get("POLYGON_API_KEY", "YOUR_POLYGON_API_KEY")
 
-# ✅ Fetch stock data
+# ✅ Fetch stock data with Debugging
 @lru_cache(maxsize=100)
 def fetch_stock_data(ticker, days=365):
     try:
@@ -31,47 +31,21 @@ def fetch_stock_data(ticker, days=365):
         st.error(f"❌ Error fetching data for {ticker}: {e}")
         return pd.DataFrame()
 
-# ✅ Relative Strength vs. SPY
-def fetch_relative_strength(ticker, benchmark="SPY"):
-    try:
-        df_stock = fetch_stock_data(ticker, days=365)
-        df_benchmark = fetch_stock_data(benchmark, days=365)
+# ✅ Debugging: Check Data Retrieval
+def check_data_availability(ticker):
+    df = fetch_stock_data(ticker, days=365)
+    if df.empty:
+        st.warning(f"⚠️ No data found for {ticker}. Skipping...")
+    return df
 
-        if df_stock.empty or df_benchmark.empty:
-            return False
-
-        df_stock["RS"] = df_stock["Close"] / df_benchmark["Close"]
-        df_stock["RS_Trend"] = df_stock["RS"].rolling(20).mean().diff()
-
-        return df_stock["RS_Trend"].iloc[-1] > 0
-    except Exception as e:
-        st.error(f"❌ Error calculating relative strength for {ticker}: {e}")
-        return False
-
-# ✅ Anchored VWAP Calculation
-def calculate_avwap(df):
-    try:
-        if df.empty or "Volume" not in df.columns or df["Volume"].sum() == 0:
-            return None
-
-        df["Cumulative_TPV"] = (df["Close"] * df["Volume"]).cumsum()
-        df["Cumulative_Volume"] = df["Volume"].cumsum()
-        df["AVWAP"] = df["Cumulative_TPV"] / df["Cumulative_Volume"]
-        return df["AVWAP"]
-    except Exception as e:
-        st.error(f"❌ Error calculating AVWAP: {e}")
-        return None
-
-# ✅ VCP Detection Algorithm
+# ✅ VCP Detection Algorithm with Debugging
 def is_valid_vcp(ticker):
-    df = fetch_stock_data(ticker, days=250)
+    df = check_data_availability(ticker)
     if df.empty:
         return 0
 
     try:
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
-        if df["ATR"].isna().all():
-            return 0
 
         df["ATR_Contraction"] = df["ATR"].rolling(50).mean() / df["ATR"]
         is_tight = df["ATR_Contraction"].iloc[-1] >= 3
@@ -86,28 +60,24 @@ def is_valid_vcp(ticker):
         df["200_SMA"] = df["Close"].rolling(200).mean()
         in_trend = df["Close"].iloc[-1] > df["50_SMA"].iloc[-1] > df["200_SMA"].iloc[-1]
 
-        df["AVWAP"] = calculate_avwap(df)
-        is_above_vwap = df["Close"].iloc[-1] > df["AVWAP"].iloc[-1] if df["AVWAP"] is not None else False
+        vcp_score = (is_tight * 0.3) + (df["Volume_Contraction"].iloc[-1] * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2)
 
-        vcp_score = (is_tight * 0.3) + (df["Volume_Contraction"].iloc[-1] * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (fetch_relative_strength(ticker) * 0.1)
-
-        if not is_above_vwap:
-            return 0
-
-        return round(vcp_score * 100, 2) if vcp_score > 50 else 0
-
+        return round(vcp_score * 100, 2) if vcp_score > 40 else 0  # ✅ Lowered threshold
     except Exception as e:
         st.error(f"❌ Error processing VCP for {ticker}: {e}")
         return 0
 
-# ✅ Backtesting VCP Setups
+# ✅ Backtesting with Debugging
 def backtest_vcp(ticker):
-    df = fetch_stock_data(ticker, days=365)
+    df = check_data_availability(ticker)
     if df.empty:
         return None
 
     try:
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
+        if df["ATR"].isna().all():
+            st.warning(f"⚠️ ATR not calculated for {ticker}. Skipping backtest...")
+            return None
 
         entry_price = df["Close"].iloc[-1]
         stop_loss = entry_price - (1.5 * df["ATR"].iloc[-1])
@@ -128,7 +98,7 @@ def backtest_vcp(ticker):
         st.error(f"❌ Error during backtesting for {ticker}: {e}")
         return None
 
-# ✅ Streamlit UI
+# ✅ Streamlit UI with Progress Bar
 st.set_page_config(page_title="🚀 Minervini VCP Scanner", layout="wide")
 st.title("🚀 Minervini VCP Scanner (Pre-Market Trade Prep)")
 
@@ -148,7 +118,7 @@ if uploaded_file is not None:
         vcp_score = is_valid_vcp(stock)
         progress_bar.progress((i + 1) / len(stocks))  # ✅ Update Progress
         
-        if vcp_score >= 50:
+        if vcp_score >= 40:  # ✅ Lower threshold
             backtest_result = backtest_vcp(stock)
             if backtest_result:
                 backtest_result["VCP Score"] = vcp_score
@@ -160,6 +130,8 @@ if uploaded_file is not None:
     st.subheader("🏆 Confirmed VCP Stocks (2:1 R:R)")
     if results:
         st.dataframe(pd.DataFrame(results))
+    else:
+        st.warning("⚠️ No valid VCP setups found.")
 
     st.subheader("📊 Backtest Results")
     if backtest_results:
