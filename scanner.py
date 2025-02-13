@@ -10,7 +10,7 @@ from concurrent.futures import ThreadPoolExecutor
 # ✅ Secure API Key Handling
 POLYGON_API_KEY = st.secrets.get("POLYGON_API_KEY", "YOUR_POLYGON_API_KEY")
 
-# ✅ Fetch stock data with Debugging
+# ✅ Fetch stock data
 @lru_cache(maxsize=100)
 def fetch_stock_data(ticker, days=365):
     try:
@@ -32,7 +32,7 @@ def fetch_stock_data(ticker, days=365):
         st.error(f"❌ Error fetching data for {ticker}: {e}")
         return pd.DataFrame()
 
-# ✅ Check Relative Strength vs SPY
+# ✅ Relative Strength Check
 def fetch_relative_strength(ticker, benchmark="SPY"):
     df_stock = fetch_stock_data(ticker, days=365)
     df_benchmark = fetch_stock_data(benchmark, days=365)
@@ -45,7 +45,15 @@ def fetch_relative_strength(ticker, benchmark="SPY"):
 
     return 1 if df_stock["RS_Trend"].iloc[-1] > 0 else 0  
 
-# ✅ Check VCP pattern with full debugging output
+# ✅ Volume Contraction Detection
+def count_volume_contractions(df):
+    contraction_count = 0
+    for i in range(2, len(df) - 1):
+        if df["Volume"].iloc[i] < df["Volume"].iloc[i - 1] and df["Volume"].iloc[i] < df["Volume_MA"].iloc[i]:
+            contraction_count += 1
+    return contraction_count
+
+# ✅ VCP Scanner
 def is_valid_vcp(ticker):
     df = fetch_stock_data(ticker, days=365)
     if df.empty or len(df) < 200:
@@ -61,14 +69,14 @@ def is_valid_vcp(ticker):
 
         in_trend = df["Close"].iloc[-1] > df["50_SMA"].iloc[-1] and df["Close"].iloc[-1] >= (df["200_SMA"].iloc[-1] * 0.95)
 
-        # ✅ ATR Calculation (Less Strict)
+        # ✅ ATR Calculation
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
         df["ATR_Contraction"] = df["ATR"].rolling(50).mean() / df["ATR"]
         is_tight = df["ATR_Contraction"].iloc[-1] >= 2.0  
 
-        # ✅ Volume Contraction (Less Strict)
+        # ✅ Volume Contraction
         df["Volume_MA"] = df["Volume"].rolling(20, min_periods=1).mean()
-        df["Volume_Contraction"] = (df["Volume"] < df["Volume_MA"] * 0.7).astype(int)
+        df["Volume_Contraction"] = count_volume_contractions(df)
 
         df["Pivot_Level"] = df["Close"].rolling(20).max()
         is_near_pivot = df["Close"].iloc[-1] >= df["Pivot_Level"].iloc[-1] * 0.95
@@ -76,22 +84,40 @@ def is_valid_vcp(ticker):
         relative_strength = fetch_relative_strength(ticker)
 
         # ✅ Final VCP Score
-        vcp_score = (is_tight * 0.3) + (df["Volume_Contraction"].iloc[-1] * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (relative_strength * 0.1)
-
-        # ✅ Full Debugging in Streamlit
-        st.subheader(f"📊 **VCP Debugging for {ticker}**")
-        st.write(f"📌 **50-SMA:** {df['50_SMA'].iloc[-1]:.2f}, **200-SMA:** {df['200_SMA'].iloc[-1]:.2f}")
-        st.write(f"📌 **Trend Confirmation:** {in_trend}")
-        st.write(f"📌 **ATR Contraction:** {df['ATR_Contraction'].iloc[-1]:.2f} (Threshold: 2.0)")
-        st.write(f"📌 **Volume Contraction:** {df['Volume_Contraction'].iloc[-1]}")
-        st.write(f"📌 **Near Pivot:** {is_near_pivot}")
-        st.write(f"📌 **Relative Strength:** {relative_strength}")
-        st.write(f"✅ **Final VCP Score:** {round(vcp_score * 100, 2)}")
+        vcp_score = (is_tight * 0.3) + ((df["Volume_Contraction"] / 3) * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (relative_strength * 0.1)
 
         return round(vcp_score * 100, 2)
     except Exception as e:
         st.error(f"❌ Error processing VCP for {ticker}: {e}")
         return 0
+
+# ✅ Backtesting (2:1 Risk-Reward)
+def backtest_vcp(ticker, vcp_score):
+    df = fetch_stock_data(ticker, days=365)
+    if df.empty:
+        return None
+
+    try:
+        df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
+        entry_price = df["Close"].iloc[-1]
+        stop_loss = entry_price - (1.5 * df["ATR"].iloc[-1])
+        target_price = entry_price + (3 * (entry_price - stop_loss))  
+
+        max_future_price = df["Close"].iloc[-10:].max()
+        success = max_future_price >= target_price
+
+        return {
+            "Stock": ticker,
+            "VCP Score": vcp_score,
+            "Entry Price": round(entry_price, 2),
+            "Stop Loss": round(stop_loss, 2),
+            "Target Price": round(target_price, 2),
+            "Max Future Price": round(max_future_price, 2),
+            "Success": success
+        }
+    except Exception as e:
+        st.error(f"❌ Error during backtesting for {ticker}: {e}")
+        return None
 
 # ✅ Streamlit UI
 st.set_page_config(page_title="🚀 Minervini VCP Scanner", layout="wide")
@@ -106,22 +132,10 @@ if uploaded_file is not None:
     st.subheader("🔍 Scanning TradingView Watchlist for VCP Setups...")
     progress_bar = st.progress(0)
 
-    results = []
-    
-    for i, stock in enumerate(stocks):
-        vcp_score = is_valid_vcp(stock)
-        progress_bar.progress((i + 1) / len(stocks))
-
-        if vcp_score >= 40:
-            results.append({"Stock": stock, "VCP Score": vcp_score})
+    results = [backtest_vcp(stock, is_valid_vcp(stock)) for stock in stocks if is_valid_vcp(stock) >= 40]
 
     progress_bar.empty()
     
-    st.subheader("🏆 Confirmed VCP Stocks (Sorted by Score)")
-    if results:
-        df_results = pd.DataFrame(results).sort_values(by="VCP Score", ascending=False)
-        st.dataframe(df_results)
-    else:
-        st.warning("⚠️ No valid VCP setups found.")
-
+    st.subheader("📊 Backtest Results")
+    st.dataframe(pd.DataFrame(results))
 
