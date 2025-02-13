@@ -83,7 +83,7 @@ def is_valid_vcp(ticker):
 
         # ✅ Volume Contraction
         df["Volume_MA"] = df["Volume"].rolling(20, min_periods=1).mean()
-        df["Volume_Contraction"] = count_volume_contractions(df)  # ✅ This is already a number
+        df["Volume_Contraction"] = count_volume_contractions(df)
 
         df["Pivot_Level"] = df["Close"].rolling(20).max()
         is_near_pivot = df["Close"].iloc[-1] >= df["Pivot_Level"].iloc[-1] * 0.95
@@ -161,5 +161,6 @@ if uploaded_file is not None:
     
     st.subheader("📊 Backtest Results")
     st.dataframe(pd.DataFrame(results))
+
 
 
