@@ -132,10 +132,16 @@ if uploaded_file is not None:
     st.subheader("🔍 Scanning TradingView Watchlist for VCP Setups...")
     progress_bar = st.progress(0)
 
-    results = [backtest_vcp(stock, is_valid_vcp(stock)) for stock in stocks if is_valid_vcp(stock) >= 40]
+    results = []
+
+    for stock in stocks:
+        vcp_score = is_valid_vcp(stock)
+        if isinstance(vcp_score, (int, float)) and vcp_score >= 40:
+            backtest_result = backtest_vcp(stock, vcp_score)
+            if backtest_result:
+                results.append(backtest_result)
 
     progress_bar.empty()
     
     st.subheader("📊 Backtest Results")
     st.dataframe(pd.DataFrame(results))
-
