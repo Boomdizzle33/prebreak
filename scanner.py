@@ -5,32 +5,39 @@ import requests
 import ta
 from datetime import datetime, timedelta
 from functools import lru_cache
+import time
 from concurrent.futures import ThreadPoolExecutor
 
 # ✅ Secure API Key Handling
 POLYGON_API_KEY = st.secrets.get("POLYGON_API_KEY", "YOUR_POLYGON_API_KEY")
 
-# ✅ Fetch stock data
+# ✅ Fetch stock data (With API Retry Handling)
 @lru_cache(maxsize=100)
 def fetch_stock_data(ticker, days=365):
-    try:
-        end_date = datetime.now()
-        start_date = end_date - timedelta(days=days)
-        url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}?adjusted=true&sort=asc&apiKey={POLYGON_API_KEY}"
+    retries = 3
+    for attempt in range(retries):
+        try:
+            end_date = datetime.now()
+            start_date = end_date - timedelta(days=days)
+            url = f"https://api.polygon.io/v2/aggs/ticker/{ticker}/range/1/day/{start_date.strftime('%Y-%m-%d')}/{end_date.strftime('%Y-%m-%d')}?adjusted=true&sort=asc&apiKey={POLYGON_API_KEY}"
 
-        response = requests.get(url)
-        response.raise_for_status()
-        data = response.json()
+            response = requests.get(url)
+            response.raise_for_status()
+            data = response.json()
 
-        if "results" in data and data["results"]:
-            df = pd.DataFrame(data["results"])
-            df['date'] = pd.to_datetime(df['t'], unit='ms')
-            df.set_index('date', inplace=True)
-            df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}, inplace=True)
-            return df
-    except Exception as e:
-        st.error(f"❌ Error fetching data for {ticker}: {e}")
-        return pd.DataFrame()
+            if "results" in data and data["results"]:
+                df = pd.DataFrame(data["results"])
+                df['date'] = pd.to_datetime(df['t'], unit='ms')
+                df.set_index('date', inplace=True)
+                df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}, inplace=True)
+                return df
+
+        except requests.exceptions.RequestException as e:
+            st.warning(f"⚠️ API Error for {ticker}: {e} (Attempt {attempt + 1}/{retries})")
+            time.sleep(2)
+
+    st.error(f"❌ Failed to fetch data for {ticker} after {retries} attempts.")
+    return pd.DataFrame()
 
 # ✅ Relative Strength Check
 def fetch_relative_strength(ticker, benchmark="SPY"):
@@ -57,7 +64,7 @@ def count_volume_contractions(df):
 def is_valid_vcp(ticker):
     df = fetch_stock_data(ticker, days=365)
     if df.empty or len(df) < 200:
-        return 0
+        return 0.0  # ✅ Always return a number
 
     try:
         df = df.sort_index(ascending=True)
@@ -86,10 +93,10 @@ def is_valid_vcp(ticker):
         # ✅ Final VCP Score
         vcp_score = (is_tight * 0.3) + ((df["Volume_Contraction"] / 3) * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (relative_strength * 0.1)
 
-        return round(vcp_score * 100, 2)
+        return float(round(vcp_score * 100, 2))  # ✅ Ensuring a number
     except Exception as e:
         st.error(f"❌ Error processing VCP for {ticker}: {e}")
-        return 0
+        return 0.0
 
 # ✅ Backtesting (2:1 Risk-Reward)
 def backtest_vcp(ticker, vcp_score):
@@ -145,3 +152,4 @@ if uploaded_file is not None:
     
     st.subheader("📊 Backtest Results")
     st.dataframe(pd.DataFrame(results))
+
