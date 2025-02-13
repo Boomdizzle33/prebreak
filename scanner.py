@@ -83,17 +83,26 @@ def is_valid_vcp(ticker):
 
         # ✅ Volume Contraction
         df["Volume_MA"] = df["Volume"].rolling(20, min_periods=1).mean()
-        df["Volume_Contraction"] = count_volume_contractions(df)
+        df["Volume_Contraction"] = count_volume_contractions(df)  # ✅ This is already a number
 
         df["Pivot_Level"] = df["Close"].rolling(20).max()
         is_near_pivot = df["Close"].iloc[-1] >= df["Pivot_Level"].iloc[-1] * 0.95
 
         relative_strength = fetch_relative_strength(ticker)
 
-        # ✅ Final VCP Score
-        vcp_score = (is_tight * 0.3) + ((df["Volume_Contraction"] / 3) * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (relative_strength * 0.1)
+        # ✅ Ensure `df["Volume_Contraction"]` is always a float
+        volume_contraction_value = float(df["Volume_Contraction"]) if isinstance(df["Volume_Contraction"], (int, float)) else 0.0
 
-        return float(round(vcp_score * 100, 2))  # ✅ Ensuring a number
+        # ✅ Final VCP Score
+        vcp_score = (
+            (is_tight * 0.3) +
+            ((volume_contraction_value / 3) * 0.1) +  
+            (is_near_pivot * 0.3) +
+            (in_trend * 0.2) +
+            (relative_strength * 0.1)
+        )
+
+        return float(round(vcp_score * 100, 2))  # ✅ Always return a float
     except Exception as e:
         st.error(f"❌ Error processing VCP for {ticker}: {e}")
         return 0.0
@@ -152,4 +161,5 @@ if uploaded_file is not None:
     
     st.subheader("📊 Backtest Results")
     st.dataframe(pd.DataFrame(results))
+
 
