@@ -26,6 +26,11 @@ def fetch_stock_data(ticker, days=365):
             df['date'] = pd.to_datetime(df['t'], unit='ms')
             df.set_index('date', inplace=True)
             df.rename(columns={"o": "Open", "h": "High", "l": "Low", "c": "Close", "v": "Volume"}, inplace=True)
+
+            # ✅ Check if all key columns exist
+            if df[["Open", "High", "Low", "Close", "Volume"]].isnull().values.any():
+                st.warning(f"⚠️ Missing data in {ticker}. Skipping...")
+                return pd.DataFrame()
             return df
     except Exception as e:
         st.error(f"❌ Error fetching data for {ticker}: {e}")
@@ -47,14 +52,19 @@ def is_valid_vcp(ticker):
     try:
         df["ATR"] = ta.volatility.AverageTrueRange(df["High"], df["Low"], df["Close"], window=14).average_true_range()
 
+        # ✅ Ensure ATR is not NaN
+        if df["ATR"].isna().all():
+            st.warning(f"⚠️ ATR not calculated for {ticker}. Skipping...")
+            return 0
+
         df["ATR_Contraction"] = df["ATR"].rolling(50).mean() / df["ATR"]
-        is_tight = df["ATR_Contraction"].iloc[-1] >= 3
+        is_tight = df["ATR_Contraction"].iloc[-1] >= 2.5  # ✅ Reduced from 3.0
 
         df["Volume_MA"] = df["Volume"].rolling(20).mean()
-        df["Volume_Contraction"] = (df["Volume"] < df["Volume_MA"] * 0.5).astype(int)
+        df["Volume_Contraction"] = (df["Volume"] < df["Volume_MA"] * 0.6).astype(int)  # ✅ Less strict filter
 
         df["Pivot_Level"] = df["Close"].rolling(20).max()
-        is_near_pivot = df["Close"].iloc[-1] >= df["Pivot_Level"].iloc[-1] * 0.97
+        is_near_pivot = df["Close"].iloc[-1] >= df["Pivot_Level"].iloc[-1] * 0.95  # ✅ Relaxed from 0.97
 
         df["50_SMA"] = df["Close"].rolling(50).mean()
         df["200_SMA"] = df["Close"].rolling(200).mean()
@@ -62,7 +72,7 @@ def is_valid_vcp(ticker):
 
         vcp_score = (is_tight * 0.3) + (df["Volume_Contraction"].iloc[-1] * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2)
 
-        return round(vcp_score * 100, 2) if vcp_score > 40 else 0  # ✅ Lowered threshold
+        return round(vcp_score * 100, 2) if vcp_score > 30 else 0  # ✅ Lowered threshold to 30
     except Exception as e:
         st.error(f"❌ Error processing VCP for {ticker}: {e}")
         return 0
@@ -118,7 +128,7 @@ if uploaded_file is not None:
         vcp_score = is_valid_vcp(stock)
         progress_bar.progress((i + 1) / len(stocks))  # ✅ Update Progress
         
-        if vcp_score >= 40:  # ✅ Lower threshold
+        if vcp_score >= 30:  # ✅ Lower threshold
             backtest_result = backtest_vcp(stock)
             if backtest_result:
                 backtest_result["VCP Score"] = vcp_score
