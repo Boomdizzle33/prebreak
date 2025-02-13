@@ -32,6 +32,19 @@ def fetch_stock_data(ticker, days=365):
         st.error(f"❌ Error fetching data for {ticker}: {e}")
         return pd.DataFrame()
 
+# ✅ Check Relative Strength vs SPY
+def fetch_relative_strength(ticker, benchmark="SPY"):
+    df_stock = fetch_stock_data(ticker, days=365)
+    df_benchmark = fetch_stock_data(benchmark, days=365)
+
+    if df_stock.empty or df_benchmark.empty:
+        return 0  
+
+    df_stock["RS"] = df_stock["Close"] / df_benchmark["Close"]
+    df_stock["RS_Trend"] = df_stock["RS"].rolling(20).mean().diff()
+
+    return 1 if df_stock["RS_Trend"].iloc[-1] > 0 else 0  
+
 # ✅ Check VCP pattern with full debugging output
 def is_valid_vcp(ticker):
     df = fetch_stock_data(ticker, days=365)
@@ -62,18 +75,8 @@ def is_valid_vcp(ticker):
 
         relative_strength = fetch_relative_strength(ticker)
 
-        # ✅ Calculate final VCP score
+        # ✅ Final VCP Score
         vcp_score = (is_tight * 0.3) + (df["Volume_Contraction"].iloc[-1] * 0.1) + (is_near_pivot * 0.3) + (in_trend * 0.2) + (relative_strength * 0.1)
-
-        # ✅ Real-time debugging in Streamlit
-        st.subheader(f"📊 **VCP Debugging for {ticker}**")
-        st.write(f"📌 **50-SMA:** {df['50_SMA'].iloc[-1]:.2f}, **200-SMA:** {df['200_SMA'].iloc[-1]:.2f}")
-        st.write(f"📌 **Trend Confirmation:** {in_trend}")
-        st.write(f"📌 **ATR Contraction:** {df['ATR_Contraction'].iloc[-1]:.2f} (Threshold: 2.0)")
-        st.write(f"📌 **Volume Contraction:** {df['Volume_Contraction'].iloc[-1]}")
-        st.write(f"📌 **Near Pivot:** {is_near_pivot}")
-        st.write(f"📌 **Relative Strength:** {relative_strength}")
-        st.write(f"✅ **Final VCP Score:** {round(vcp_score * 100, 2)}")
 
         return round(vcp_score * 100, 2)
     except Exception as e:
@@ -141,7 +144,4 @@ if uploaded_file is not None:
         st.dataframe(pd.DataFrame(backtest_results))
     else:
         st.warning("⚠️ No valid VCP setups found in backtest.")
-
-
-
 
